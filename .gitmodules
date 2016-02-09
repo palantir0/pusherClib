@@ -1,9 +1,9 @@
 [submodule "sglib"]
 	path = sglib
-	url = https://palantir0@github.com/palantir0/sglib
+	url = https://github.com/palantir0/sglib
 [submodule "cJSON"]
 	path = cJSON
-	url = https://palantir0@github.com/palantir0/cJSON
+	url = https://github.com/palantir0/cJSON
 [submodule "libwebsockets"]
 	path = libwebsockets
 	url = https://github.com/warmcat/libwebsockets.git
