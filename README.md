@@ -20,7 +20,7 @@ cd libwebmodule/build
     // build with shared libraries off depending on the target this will run on
 cmake -DLWS_WITH_SHARED=OFF ..
 
-    // Now build the pusher library
+    // Now build the pusher library - if openssl home isn't set, it will error out.
 make
 
     // if you want to run the test program, set the values in config.h
