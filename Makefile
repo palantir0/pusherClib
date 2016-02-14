@@ -44,4 +44,6 @@ clean:
 	rm -f *.o
 	rm -f ../*.o
 	rm -f $(MODULE)
+	rm -f test
+	rm -f lib/*.a
 

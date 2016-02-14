@@ -20,12 +20,12 @@
 #define CLIENT_NAME "pusher-cLib"
 #define CLIENT_VERSION "0.1"
 #define PUSHER_PROTO_VER 7
+#define PUSHER_USE_SSL 1
 
 static int
-pusherListener(struct libwebsocket_context *this,
-			struct libwebsocket *wsi,
-			enum libwebsocket_callback_reasons reason,
-					       void *user, void *in, size_t len);
+pusherListener(struct lws *wsi,
+			   enum lws_callback_reasons reason,
+			   void *user, void *in, size_t len);
 
 int deny_deflate = 0;
 int deny_mux = 0;
@@ -90,13 +90,13 @@ static struct code codeMap[] = {
     /// @param conn A connection instance with valid libwebsocket context
     /// @return A malloc'd string that must be freed by caller
     ///
-char *createChannelId(struct libwebsocket_context *context, const char *channelPrefix) {
+char *createChannelId(struct lws_context *context, const char *channelPrefix) {
     char    hash[8];
     char    key[32];
 	int 	i;
 
         // Use our websocket library for randomness
-	int rc = libwebsockets_get_random(context, hash, 8);
+	int rc = lws_get_random(context, hash, 8);
         // we asked for 6 bytes, make sure it is 6
 	if (rc != 6) {
         printf("Unable to read random, use rand\n");
@@ -186,19 +186,23 @@ int queuePing(struct PusherConnection *conn) {
 
     /// Send an event on the websocket.  Keep in mind that the websocket
     /// must be in a send state in order to do this.  So during the time of 
-    /// the libwebsocket callback, this can be used to send an event.
+    /// the lws callback, this can be used to send an event.
     /// @param wsi the socket to send
     /// @param event the name of the event. (e.g. "pusher:subscribe")
     /// @param data the inforamtion that should be put as a string in the 'data'
     /// field.  However, if the event has the 'pusher:' prefix, this data will be 
     /// sent as a json object rather than serialized.
     /// @return neg on failure, 1 or greater for success, 0 means no data was sent.
-int sendEvent(struct libwebsocket *wsi, char *event, cJSON *data) {
+int sendEvent(struct lws *wsi, char *event, cJSON *data) {
     char    pusherEventBuf[512];
         // Get main json object
     cJSON *root = cJSON_CreateObject();
     if (!root) {
         printf("Out of memory\n");
+			// Deleting root has a side-effect of deleting 'data' so delete this 
+			// before returning so the function is consistent otherwise caller will
+			// need to figure out what to do on return.
+		cJSON_Delete(data);
         return -ENOMEM;
     }
 
@@ -208,6 +212,7 @@ int sendEvent(struct libwebsocket *wsi, char *event, cJSON *data) {
     char *json = cJSON_PrintUnformatted(root);
     if (json == NULL) {
         printf("Invalid json\n");
+		cJSON_Delete(root);
         return -1;
     }
 
@@ -220,12 +225,12 @@ int sendEvent(struct libwebsocket *wsi, char *event, cJSON *data) {
         printf("Out of memory\n");
         return -ENOMEM;
     }
-    sprintf((char *)&buf[LWS_SEND_BUFFER_PRE_PADDING], "%s", json);
+    snprintf((char *)&buf[LWS_SEND_BUFFER_PRE_PADDING], buflen, "%s", json);
     printf("sending event: %s\n", json);
 
 	// NOTE: all the bytes need not be sent, so this would queue a write callback
 	// and the rest would then need to be sent.  TODO currently this is not handled
-    int n = libwebsocket_write(wsi, &buf[LWS_SEND_BUFFER_PRE_PADDING], 
+    int n = lws_write(wsi, &buf[LWS_SEND_BUFFER_PRE_PADDING], 
                                strlen(json), LWS_WRITE_TEXT);
 		// cleanup
     cJSON_Delete(root);
@@ -297,7 +302,7 @@ int subscribe(struct PusherConnection *conn, char *channel, char *events[], int 
         // make it so - this will be dequeued by the callback
     rc = sgEnqueue(conn->msgQueue, (void *)msg);
         // this kicks the websocket to make sure there is a callback to write the next event.
-    libwebsocket_callback_on_writable(conn->context, conn->websock);
+    lws_callback_on_writable(conn->websock);
 
     return rc;
 }
@@ -321,9 +326,8 @@ processEvent(char *event, cJSON *data, struct PusherConnection *conn) {
 
     // Listener for all things websocket/Pusher.
 static int
-pusherListener(struct libwebsocket_context *this,
-			   struct libwebsocket *wsi,
-			   enum libwebsocket_callback_reasons reason,
+pusherListener(struct lws *wsi,
+			   enum lws_callback_reasons reason,
                void *user, void *in, size_t len)
 {
     char *decodedReason = "Unknown";
@@ -338,14 +342,14 @@ pusherListener(struct libwebsocket_context *this,
     //    printf("%d '%s'\n", (int)len, (char *)in);
    // }
     struct PusherConnection *conn = NULL;
-    if (wsi != NULL && libwebsockets_get_protocol(wsi) != NULL)
-        conn = (struct PusherConnection *)libwebsockets_get_protocol(wsi)->user;
+    if (wsi != NULL && lws_get_protocol(wsi) != NULL)
+        conn = (struct PusherConnection *)lws_get_protocol(wsi)->user;
 
 	switch (reason) {
 
 	case LWS_CALLBACK_CLIENT_ESTABLISHED:
 		printf("pusherListener: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
-        libwebsocket_callback_on_writable(this, wsi);
+        lws_callback_on_writable(wsi);
         if (conn != NULL)
             conn->connected = 1;
 
@@ -394,7 +398,7 @@ pusherListener(struct libwebsocket_context *this,
                 break;
 			}
                 // We have an event and the data json so lets process it
-            processEvent(event, data, (struct PusherConnection *)libwebsockets_get_protocol(wsi)->user);
+            processEvent(event, data, (struct PusherConnection *)lws_get_protocol(wsi)->user);
 
                 // cleanup
             cJSON_Delete(data);
@@ -407,7 +411,7 @@ pusherListener(struct libwebsocket_context *this,
         {
             printf("WRITEABLE callback\n");
             int rc = 0;
-            struct PusherConnection *conn = (struct PusherConnection *)libwebsockets_get_protocol(wsi)->user;
+            struct PusherConnection *conn = (struct PusherConnection *)lws_get_protocol(wsi)->user;
             if (conn != NULL && conn->msgQueue != NULL) {
                 printf("dequeue msg\n");
                 struct MessageEntry *entry;
@@ -415,10 +419,14 @@ pusherListener(struct libwebsocket_context *this,
                 printf("msg: %d\n", rc);
                 if (!rc && entry != NULL) {
                     printf("sendEvent\n");
+						// entry->data is freed on this call
                     rc = sendEvent(wsi, entry->event, (entry->data != NULL ? entry->data : NULL));
-                    printf("Event sent, queue up next write event\n");
-                    libwebsocket_callback_on_writable(this, wsi);
-                	cJSON_Delete(entry->data);
+					if (rc < 0) {
+						printf("sendEvent Failed\n");
+					} else {
+						printf("Event sent, queue up next write event\n");
+						lws_callback_on_writable(wsi);
+					}
 					free(entry);
                 } else {
                     printf("Unable to dequeue event\n");
@@ -462,7 +470,7 @@ void closeAndFreeConnection(struct PusherConnection *conn) {
 	int i;
     printf("closeAndFreeConnection\n");
     if (conn->context != NULL)
-        libwebsocket_context_destroy(conn->context);
+        lws_context_destroy(conn->context);
 
     if (conn->msgQueue != NULL) {
         struct MessageEntry *entry;
@@ -477,7 +485,7 @@ void closeAndFreeConnection(struct PusherConnection *conn) {
     }
     printf("free protocols\n");
     if (conn->info.protocols != NULL) {
-        free(conn->info.protocols);
+        free((char *)conn->info.protocols);
 		conn->info.protocols = NULL;
     }
     printf("free connection\n");
@@ -486,10 +494,10 @@ void closeAndFreeConnection(struct PusherConnection *conn) {
 
 /* list of supported protocols and callbacks for Pusher*/
 /* These are the default and structure should not be used directly */
-static struct libwebsocket_protocols defProtocols[] = {
+static struct lws_protocols defProtocols[] = {
 	{
 #if (PUSHER_USE_SSL==1)
-		"wss",  // protocol name
+		"ws",  // protocol name
 #else
 		"ws",
 #endif
@@ -521,8 +529,8 @@ int
 makeConnection(char *address, int port, int use_ssl, struct PusherConnection *conn) {
 	int n = 0;
 	int ret = 0;
-    struct libwebsocket_protocols *protocols = 
-        (struct libwebsocket_protocols *)calloc(2, sizeof(struct libwebsocket_protocols));
+    struct lws_protocols *protocols = 
+        (struct lws_protocols *)calloc(2, sizeof(struct lws_protocols));
     memcpy((char *)protocols, (char *)defProtocols, sizeof(defProtocols));
 
         // this gets passed around in the callback
@@ -533,9 +541,9 @@ makeConnection(char *address, int port, int use_ssl, struct PusherConnection *co
 	conn->address = address;
 
     lws_set_log_level(~0, logOut);
-    struct libwebsocket_context *context = libwebsocket_create_context(&conn->info);
+    struct lws_context *context = lws_create_context(&conn->info);
     if (context == NULL) {
-        fprintf(stderr, "Creating libwebsocket context failed\n");
+        fprintf(stderr, "Creating lws context failed\n");
 		conn->info.protocols = NULL;
         free(protocols);
         return -1;
@@ -544,20 +552,21 @@ makeConnection(char *address, int port, int use_ssl, struct PusherConnection *co
         // Setup the GET path that is sent to Pusher to convert this to the websocket protocol.
         // Note, the protocol version is a Pusher version and not the ietf websocket protocol #.
     char webpath[512];
-    snprintf(webpath, sizeof(webpath), "/app/%s?client=%slinux-CLib&protocol=%d&version=%s", 
+    snprintf(webpath, sizeof(webpath), "/app/%s?client=%s-linux-CLib&protocol=%d&version=%s", 
              conn->apiKey, CLIENT_NAME, PUSHER_PROTO_VER, CLIENT_VERSION);
     webpath[sizeof(webpath)-1] = '\0';
     printf("using path: %s\n", webpath);
 
     char addrPort[200];
     snprintf(addrPort, sizeof(addrPort), "%s:%u", address, port);
+    printf("using address: %s\n", addrPort);
     conn->context = context;
 
         // Setting up a client connection.  This just starts the process.  The 
-        // libwebsocket_service() is what managed the connections and initial 
+        // lws_service() is what managed the connections and initial 
         // handshake.  The connection you get back is only for reference and only 
         // during the callback should data be sent.
-	conn->websock = libwebsocket_client_connect(
+	conn->websock = lws_client_connect(
                             conn->context, 
                             conn->address,  // just host
                             conn->port,   
@@ -565,13 +574,13 @@ makeConnection(char *address, int port, int use_ssl, struct PusherConnection *co
 			                webpath,   // HTTP GET $s portion
                             addrPort,  // should be host:port
                             NULL, // not used as far as I know
-                            (conn->use_ssl ? "wss" : "ws"),// to ssl or not
+                            (conn->use_ssl ? "ws" : "ws"),// to ssl or not
                             -1
                             ); // pass -1, 13 is the current version and is required
                                  // also, it has nothing to do with Pusher version/protocol
 
 	if (conn->websock == NULL) {
-		fprintf(stderr, "libwebsocket connect failed: %d\n", errno);
+		fprintf(stderr, "lws connect failed: %d\n", errno);
 		ret = 1;
 		goto done;
 	}
@@ -581,7 +590,7 @@ makeConnection(char *address, int port, int use_ssl, struct PusherConnection *co
 done:
         // if the protocol doesn't setup correctly then cleanup
 	fprintf(stderr, "makeConnection failed: %d\n", ret);
-    libwebsocket_context_destroy(conn->context);
+    lws_context_destroy(conn->context);
 	conn->info.protocols = NULL;
 	conn->context = NULL;
     free(protocols);
@@ -590,7 +599,7 @@ done:
 
 int
 pusherService(struct PusherConnection *conn, long timeoutInMillis) {
-    return libwebsocket_service(conn->context, 5000);
+    return lws_service(conn->context, 5000);
 }
 
 
@@ -605,13 +614,14 @@ void *websockProcessing(void *arguments) {
     sem_post(&conn->lock);
     while (!conn->terminate) {
         if (!conn->closed && conn->context != NULL && conn->websock != NULL) {
-            n = libwebsocket_service(conn->context, 10000);
-                // connection died, turn off servicing
+            n = lws_service(conn->context, 10000);
             if (n < 0) {
+				fprintf(stderr, "connection died attempting to service it\n");
+					// connection died, turn off servicing
                 conn->closed = 1;
-                free(conn->info.protocols);
+                free((char *)conn->info.protocols);
                 conn->info.protocols = NULL;
-                libwebsocket_context_destroy(conn->context);
+                lws_context_destroy(conn->context);
                 conn->context = NULL;
 				conn->pusherState = STATE_TERM;
             } else
@@ -619,7 +629,7 @@ void *websockProcessing(void *arguments) {
         }
         if (conn->terminate)
             break;
-        sleep(60);
+        sleep(2);
     }
     conn->closed = 1;
     sem_wait(&conn->lock);
@@ -641,7 +651,7 @@ pusherCreate(char *apiKey, cJSON *options) {
     sem_init(&conn->lock, 1, 1);
 	conn->info.port = CONTEXT_PORT_NO_LISTEN;
 #ifndef LWS_NO_EXTENSIONS
-	conn->info.extensions = libwebsocket_get_internal_extensions();
+	conn->info.extensions = lws_get_internal_extensions();
 #endif
 	conn->info.gid = -1;
 	conn->info.uid = -1;

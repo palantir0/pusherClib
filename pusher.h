@@ -26,10 +26,10 @@ enum PusherState {
     /// Defines a connection instance with a Pusher server.
 struct PusherConnection {
         // websock parameters used internally
-    struct libwebsocket_context *context;
-    struct libwebsocket_protocols *protocols;
+    struct lws_context *context;
+    struct lws_protocols *protocols;
     struct lws_context_creation_info info;
-    struct libwebsocket *websock;
+    struct lws *websock;
         
     char *address; ///< The host_domain address string to connect with.
     int port;      ///< Port of the pusher server; s/b 80 or 443
