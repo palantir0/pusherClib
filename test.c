@@ -22,7 +22,8 @@
 
 
     /// Define as 1 or 0 if plain text
-#define PUSHER_USE_SSL 0
+#define PUSHER_USE_SSL 1
+
 
 char *
 getUserId() {
@@ -72,7 +73,7 @@ int main(int argc, char *argv[]) {
     int rc =0;
 	signal(SIGINT, sighandler);
 	int port = PUSHER_USE_SSL==1 ? 443 : 80;
-	char *address = PUSHER_USE_SSL==1 ? "wss.pusherapp.com" : "ws.pusherapp.com";
+	char *address = PUSHER_USE_SSL==1 ? "ws.pusherapp.com" : "ws.pusherapp.com";
 
     // #### WARNING ### --> Make sure to modify config.h with your key
     struct PusherConnection *conn = pusherCreate(PUSHER_KEY, NULL);
