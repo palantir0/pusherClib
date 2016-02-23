@@ -26,7 +26,10 @@ CFLAGS = $(INC) -Wall -g -Wno-unused-variable -Wno-unused-function -Wno-unused-l
          -Wno-deprecated-declarations
 
 all: $(OBJS)
-	$(MKDIR) -p libwebsockets/build
+	if ! [ -d "libwebsockets/build" ]; then \
+        $(MKDIR) -p libwebsockets/build; \
+        cd libwebsockets/build; cmake -DLWS_WITH_SHARED=OFF -DLWS_WITHOUT_SERVER=ON ..; \
+	fi
 	make -C libwebsockets/build 
 	$(AR) -rv lib$(LIBRARY).a $(OBJS) 
 	$(MKDIR) -p lib
@@ -47,3 +50,6 @@ clean:
 	rm -f test
 	rm -f lib/*.a
 
+
+distclean:
+	rm -rf libwebsockets/build
