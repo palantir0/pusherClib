@@ -25,17 +25,17 @@ OBJS = $(SRC:.c=.o)
 CFLAGS = $(INC) -Wall -g -Wno-unused-variable -Wno-unused-function -Wno-unused-label \
          -Wno-deprecated-declarations
 
+all: libws $(OBJS)
+	$(AR) -rv lib$(LIBRARY).a $(OBJS)
+	$(MKDIR) -p lib
+	$(MV) lib$(LIBRARY).a lib
+
 libws:
 	if ! [ -d "libwebsockets/build" ]; then \
 	  $(MKDIR) -p libwebsockets/build; \
 	  cd libwebsockets/build; cmake -DLWS_WITH_SHARED=OFF -DLWS_WITHOUT_SERVER=ON ..; \
 	fi
 	make -C libwebsockets/build
-
-all: libws $(OBJS)
-	$(AR) -rv lib$(LIBRARY).a $(OBJS)
-	$(MKDIR) -p lib
-	$(MV) lib$(LIBRARY).a lib
 
 .c.o:
 	$(CC) $(CFLAGS) -c $< -o $@
