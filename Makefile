@@ -43,14 +43,11 @@ all: libws $(OBJS)
 test: $(OBJS) test.o
 	$(CC) $(CFLAGS) $(LIBS) $(OBJS) $(LIBS) test.o -o test
 
-
-clean:
+clean: distclean
 	rm -f *.o
-	rm -f ../*.o
 	rm -f $(MODULE)
 	rm -f test
 	rm -f lib/*.a
-
 
 distclean:
 	rm -rf libwebsockets/build
