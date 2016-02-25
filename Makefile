@@ -12,8 +12,8 @@ MV=mv
 SRC = pusher.c     \
       $(CJSON_DIR)/cJSON.c \
       utf8.c \
-      queue.c 
-      
+      queue.c
+
 INC = -I$(CJSON_DIR) -I$(WEBSOCKETS_DIR)/lib -I$(WEBSOCKETS_DIR)/build \
       -I$(OPENSSL_DIR)/include -I./sglib
 
@@ -25,19 +25,20 @@ OBJS = $(SRC:.c=.o)
 CFLAGS = $(INC) -Wall -g -Wno-unused-variable -Wno-unused-function -Wno-unused-label \
          -Wno-deprecated-declarations
 
-all: $(OBJS)
+libws:
 	if ! [ -d "libwebsockets/build" ]; then \
-        $(MKDIR) -p libwebsockets/build; \
-        cd libwebsockets/build; cmake -DLWS_WITH_SHARED=OFF -DLWS_WITHOUT_SERVER=ON ..; \
+	  $(MKDIR) -p libwebsockets/build; \
+	  cd libwebsockets/build; cmake -DLWS_WITH_SHARED=OFF -DLWS_WITHOUT_SERVER=ON ..; \
 	fi
-	make -C libwebsockets/build 
-	$(AR) -rv lib$(LIBRARY).a $(OBJS) 
+	make -C libwebsockets/build
+
+all: libws $(OBJS)
+	$(AR) -rv lib$(LIBRARY).a $(OBJS)
 	$(MKDIR) -p lib
 	$(MV) lib$(LIBRARY).a lib
 
-.c.o: 
+.c.o:
 	$(CC) $(CFLAGS) -c $< -o $@
-    
 
 test: $(OBJS) test.o
 	$(CC) $(CFLAGS) $(LIBS) $(OBJS) $(LIBS) test.o -o test
