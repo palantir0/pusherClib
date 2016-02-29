@@ -25,6 +25,11 @@ OBJS = $(SRC:.c=.o)
 CFLAGS = $(INC) -Wall -g -Wno-unused-variable -Wno-unused-function -Wno-unused-label \
          -Wno-deprecated-declarations
 
+all: libws $(OBJS)
+	$(AR) -rv lib$(LIBRARY).a $(OBJS)
+	$(MKDIR) -p lib
+	$(MV) lib$(LIBRARY).a lib
+
 libws:
 	if ! [ -d "libwebsockets/build" ]; then \
 	  $(MKDIR) -p libwebsockets/build; \
@@ -32,18 +37,13 @@ libws:
 	fi
 	make -C libwebsockets/build
 
-all: libws $(OBJS)
-	$(AR) -rv lib$(LIBRARY).a $(OBJS)
-	$(MKDIR) -p lib
-	$(MV) lib$(LIBRARY).a lib
-
 .c.o:
 	$(CC) $(CFLAGS) -c $< -o $@
 
 test: $(OBJS) test.o
 	$(CC) $(CFLAGS) $(LIBS) $(OBJS) $(LIBS) test.o -o test
 
-clean: distclean
+clean:
 	rm -f *.o
 	rm -f $(MODULE)
 	rm -f test
