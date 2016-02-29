@@ -51,3 +51,4 @@ clean: distclean
 
 distclean:
 	rm -rf libwebsockets/build
+	make -C cJSON
