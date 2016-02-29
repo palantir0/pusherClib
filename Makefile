@@ -43,7 +43,7 @@ libws:
 test: $(OBJS) test.o
 	$(CC) $(CFLAGS) $(LIBS) $(OBJS) $(LIBS) test.o -o test
 
-clean: distclean
+clean:
 	rm -f *.o
 	rm -f $(MODULE)
 	rm -f test
